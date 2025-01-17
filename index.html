@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HC-05 OLED Control</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px 0;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        textarea {
+            width: 100%;
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>HC-05 OLED Control</h1>
+        
+        <div id="statusDiv" class="status disconnected">
+            Status: Disconnected
+        </div>
+
+        <button id="connectBtn" onclick="connectBluetooth()">Connect to HC-05</button>
+        <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+        
+        <div>
+            <h3>Send Message to OLED</h3>
+            <textarea id="messageInput" rows="4" placeholder="Enter message to display on OLED" disabled></textarea>
+            <button id="sendBtn" onclick="sendMessage()" disabled>Send to OLED</button>
+        </div>
+    </div>
+
+    <script>
+        let bluetoothDevice;
+        let characteristicCache;
+
+        async function connectBluetooth() {
+            try {
+                bluetoothDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{
+                        // HC-05 usually shows up with this name, but it might be different
+                        // based on your module's configuration
+                        namePrefix: 'HC-05'
+                    }],
+                    optionalServices: ['0000ffe0-0000-1000-8000-00805f9b34fb']
+                });
+
+                const server = await bluetoothDevice.gatt.connect();
+                const service = await server.getPrimaryService('0000ffe0-0000-1000-8000-00805f9b34fb');
+                characteristicCache = await service.getCharacteristic('0000ffe1-0000-1000-8000-00805f9b34fb');
+
+                updateConnectionStatus(true);
+                
+                bluetoothDevice.addEventListener('gattserverdisconnected', onDisconnected);
+            } catch (error) {
+                console.error(error);
+                alert('Bluetooth connection failed: ' + error);
+            }
+        }
+
+        function updateConnectionStatus(connected) {
+            const statusDiv = document.getElementById('statusDiv');
+            const connectBtn = document.getElementById('connectBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+            const messageInput = document.getElementById('messageInput');
+            const sendBtn = document.getElementById('sendBtn');
+
+            statusDiv.className = 'status ' + (connected ? 'connected' : 'disconnected');
+            statusDiv.textContent = 'Status: ' + (connected ? 'Connected' : 'Disconnected');
+            
+            connectBtn.disabled = connected;
+            disconnectBtn.disabled = !connected;
+            messageInput.disabled = !connected;
+            sendBtn.disabled = !connected;
+        }
+
+        function onDisconnected() {
+            updateConnectionStatus(false);
+            characteristicCache = null;
+        }
+
+        async function disconnect() {
+            if (bluetoothDevice) {
+                await bluetoothDevice.gatt.disconnect();
+                updateConnectionStatus(false);
+            }
+        }
+
+        async function sendMessage() {
+            if (!characteristicCache) {
+                alert('Please connect to HC-05 first');
+                return;
+            }
+
+            const message = document.getElementById('messageInput').value;
+            if (!message) {
+                alert('Please enter a message');
+                return;
+            }
+
+            try {
+                const encoder = new TextEncoder();
+                const data = encoder.encode(message);
+                await characteristicCache.writeValue(data);
+                alert('Message sent successfully!');
+            } catch (error) {
+                console.error(error);
+                alert('Failed to send message: ' + error);
+            }
+        }
+    </script>
+</body>
+</html>
